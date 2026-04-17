@@ -1,11 +1,14 @@
 from engine.transforms import TRANSFORMS
 from engine.color import get_color_map, apply_color_map
 from engine.generalizer import evaluate_program
-
+from engine.selector import get_initial_programs
 
 def beam_search_multi(examples, beam_width=10, max_depth=3):
 
-    beam = [([], 0.0)]
+    initial_programs = get_initial_programs([(input_grid, target_grid)])
+
+    beam = [(p, input_grid, 0.0) for p in initial_programs] or [([], input_grid, 0.0)]
+
     best_program = []
     best_score = 0.0
 

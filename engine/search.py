@@ -1,16 +1,26 @@
 # engine/search.py
 
+from engine import features
 import numpy as np
 
 from engine.transforms import TRANSFORMS
+from engine.executor import apply_program
 from engine.scorer import score
 from engine.color import get_color_map, apply_color_map
+from engine.synthesizer import generate_candidate_programs
+from engine.library import add_program
+from engine.meta import store_experience
+from engine.features import extract_features
+from engine.selector import get_initial_programs
+
 
 
 def beam_search(input_grid, target_grid, beam_width=10, max_depth=3):
 
-    # (program, current_grid, score)
-    beam = [([], input_grid, 0.0)]
+    initial_programs = get_initial_programs([(input_grid, target_grid)])
+
+    beam = [(p, input_grid, 0.0) for p in initial_programs] or [([], input_grid, 0.0)]
+
 
     best_program = []
     best_score = 0.0
@@ -36,19 +46,22 @@ def beam_search(input_grid, target_grid, beam_width=10, max_depth=3):
 
         for program, current_grid, _ in beam:
 
-            # 🔹 geometric transforms
-            for t in transform_names:
+            # 🔥 PHASE 7: program synthesis
+            candidate_programs = generate_candidate_programs(program)
+
+            for new_program in candidate_programs:
+
                 try:
-                    new_grid = TRANSFORMS[t](current_grid)
+                    new_grid = apply_program(input_grid, new_program)
                 except Exception:
                     continue
 
-                # 🔥 PRUNING: skip invalid shapes
+                # 🔥 PRUNING: invalid shapes
                 if new_grid.shape[0] > 30 or new_grid.shape[1] > 30:
                     continue
 
-                # 🔥 PRUNING: skip same state
-                if is_same(new_grid, current_grid):
+                # 🔥 PRUNING: no change
+                if is_same(new_grid, input_grid):
                     continue
 
                 # 🔥 scoring
@@ -57,15 +70,13 @@ def beam_search(input_grid, target_grid, beam_width=10, max_depth=3):
                 else:
                     s = score(new_grid, target_grid)
 
-                new_program = program + [t]
-
                 new_beam.append((new_program, new_grid, s))
 
                 if s > best_score:
                     best_score = s
                     best_program = new_program
 
-            # 🔥 color mappings
+            # 🔥 color mappings (applied incrementally)
             for mapping in color_mappings:
                 try:
                     new_grid = apply_color_map(current_grid, mapping)
@@ -101,9 +112,9 @@ def beam_search(input_grid, target_grid, beam_width=10, max_depth=3):
         dedup_beam = sorted(
             dedup_beam,
             key=lambda x: (
-                x[2],                      # score
-                not uses_color_map(x[0]), # prefer simpler transforms
-                -program_complexity(x[0]) # shorter programs
+                x[2],                       # score
+                not uses_color_map(x[0]),  # prefer simpler programs
+                -program_complexity(x[0])  # shorter programs
             ),
             reverse=True
         )
@@ -116,5 +127,13 @@ def beam_search(input_grid, target_grid, beam_width=10, max_depth=3):
         # early stop
         if best_score == 1.0:
             break
+
+    # 🔥 PHASE 7: store good programs
+    if best_score > 0.9:
+        add_program(best_program, best_score)
+        
+    features = extract_features(input_grid)
+
+    store_experience(features, best_program, best_score)
 
     return best_program, best_score
