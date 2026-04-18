@@ -1,13 +1,33 @@
-DATASET = []
+import json
+import os
+
+DATA_PATH = "models/dataset.json"
 
 
 def add_sample(features, program, score):
-    DATASET.append({
+
+    sample = {
         "features": features,
         "program": program,
-        "score": score
-    })
+        "score": float(score)
+    }
+
+    if os.path.exists(DATA_PATH):
+        with open(DATA_PATH, "r") as f:
+            data = json.load(f)
+    else:
+        data = []
+
+    data.append(sample)
+
+    with open(DATA_PATH, "w") as f:
+        json.dump(data, f)
 
 
 def get_dataset():
-    return DATASET
+
+    if not os.path.exists(DATA_PATH):
+        return []
+
+    with open(DATA_PATH, "r") as f:
+        return json.load(f)
